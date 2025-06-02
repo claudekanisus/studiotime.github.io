@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import type { StaffMember } from "@/lib/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -15,11 +16,14 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PlusCircle, Save } from "lucide-react";
+import { PlusCircle, Save, BookOpen } from "lucide-react";
 
 const staffFormSchema = z.object({
   name: z.string().min(2, {
     message: "Name must be at least 2 characters.",
+  }),
+  subject: z.string().min(2, {
+    message: "Subject must be at least 2 characters.",
   }),
 });
 
@@ -34,8 +38,18 @@ interface StaffFormProps {
 export function StaffForm({ staffMember, onSubmit, onCancel }: StaffFormProps) {
   const form = useForm<StaffFormValues>({
     resolver: zodResolver(staffFormSchema),
-    defaultValues: staffMember ? { name: staffMember.name } : { name: "" },
+    defaultValues: staffMember ? { name: staffMember.name, subject: staffMember.subject || "" } : { name: "", subject: "" },
   });
+
+  // Ensure form resets to new staffMember prop if it changes (e.g. when editing a new staff member)
+  React.useEffect(() => {
+    if (staffMember) {
+      form.reset({ name: staffMember.name, subject: staffMember.subject || "" });
+    } else {
+      form.reset({ name: "", subject: ""});
+    }
+  }, [staffMember, form]);
+
 
   const handleSubmit = (data: StaffFormValues) => {
     onSubmit(data);
@@ -63,6 +77,21 @@ export function StaffForm({ staffMember, onSubmit, onCancel }: StaffFormProps) {
                   <FormLabel>Staff Name</FormLabel>
                   <FormControl>
                     <Input placeholder="e.g. Jane Doe" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="subject"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-1">
+                    <BookOpen className="h-4 w-4 text-muted-foreground" /> Subject
+                  </FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g. Mathematics" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

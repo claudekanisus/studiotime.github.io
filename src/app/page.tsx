@@ -32,7 +32,13 @@ export default function HomePage() {
   useEffect(() => {
     const storedStaff = localStorage.getItem("timetableGeniusStaff");
     if (storedStaff) {
-      setStaffMembers(JSON.parse(storedStaff));
+      const parsedStaff = JSON.parse(storedStaff) as Partial<StaffMember>[]; // Use Partial initially
+      const staffWithSubjectsEnsured = parsedStaff.map(staff => ({
+        id: staff.id || crypto.randomUUID(), // Ensure ID exists
+        name: staff.name || "Unknown", // Ensure name exists
+        subject: staff.subject || "", // Default to empty string if subject is missing
+      }));
+      setStaffMembers(staffWithSubjectsEnsured as StaffMember[]);
     }
     const storedTimetable = localStorage.getItem("timetableGeniusTimetable");
     if (storedTimetable) {
@@ -53,19 +59,19 @@ export default function HomePage() {
   }, [timetable]);
 
 
-  const handleStaffSubmit = (data: { name: string }) => {
+  const handleStaffSubmit = (data: { name: string; subject: string }) => {
     if (editingStaff) {
       setStaffMembers(
         staffMembers.map((s) =>
-          s.id === editingStaff.id ? { ...s, name: data.name } : s
+          s.id === editingStaff.id ? { ...s, name: data.name, subject: data.subject } : s
         )
       );
-      toast({ title: "Staff Updated", description: `${data.name} has been updated.` });
+      toast({ title: "Staff Updated", description: `${data.name} (${data.subject}) has been updated.` });
       setEditingStaff(null);
     } else {
-      const newStaff: StaffMember = { id: crypto.randomUUID(), name: data.name };
+      const newStaff: StaffMember = { id: crypto.randomUUID(), name: data.name, subject: data.subject };
       setStaffMembers([...staffMembers, newStaff]);
-      toast({ title: "Staff Added", description: `${data.name} has been added.` });
+      toast({ title: "Staff Added", description: `${data.name} (${data.subject}) has been added.` });
     }
   };
 

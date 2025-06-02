@@ -2,7 +2,7 @@
 
 import type { StaffMember } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Edit, Trash2, User } from "lucide-react";
+import { Edit, Trash2, User, BookOpen } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,8 +25,15 @@ export function StaffListItem({ staffMember, onEdit, onDelete }: StaffListItemPr
   return (
     <li className="flex items-center justify-between p-3 bg-card hover:bg-secondary/80 rounded-md shadow transition-colors">
       <div className="flex items-center gap-3">
-        <User className="h-5 w-5 text-primary" />
-        <span className="font-body">{staffMember.name}</span>
+        <User className="h-5 w-5 text-primary shrink-0" />
+        <div className="flex flex-col">
+            <span className="font-body font-semibold">{staffMember.name}</span>
+            {staffMember.subject && (
+                 <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <BookOpen className="h-3 w-3"/> {staffMember.subject}
+                 </span>
+            )}
+        </div>
       </div>
       <div className="flex gap-2">
         <Button variant="ghost" size="icon" onClick={() => onEdit(staffMember)} aria-label="Edit staff member">
