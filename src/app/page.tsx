@@ -97,13 +97,12 @@ export default function HomePage() {
       setSelectedStaffIdForFilter(null);
     }
 
-    // If the deleted staff's class(es) are no longer present, reset class view if it was selected
     if (deletedStaffMember && selectedClassView !== "all" && deletedStaffMember.assignedClass.includes(selectedClassView)) {
         const remainingClassesForThisView = new Set(
             staffMembers
-                .filter(s => s.id !== staffId) // consider only remaining staff
-                .flatMap(s => s.assignedClass) // get all their class assignments
-                .filter(Boolean) // filter out any falsy values
+                .filter(s => s.id !== staffId) 
+                .flatMap(s => s.assignedClass) 
+                .filter(Boolean) 
         );
         if (!remainingClassesForThisView.has(selectedClassView)) {
             setSelectedClassView("all");
@@ -137,9 +136,13 @@ export default function HomePage() {
       });
     } catch (error) {
       console.error("Error generating timetable:", error);
+      let description = "Could not generate timetable. Check console for errors.";
+      if (error instanceof Error && (error.message.includes('503') || error.message.toLowerCase().includes('service unavailable'))) {
+        description = "The AI model is currently overloaded. Please try again in a few moments.";
+      }
       toast({
         title: "Generation Failed",
-        description: "Could not generate timetable. Check console for errors.",
+        description: description,
         variant: "destructive",
       });
     } finally {
@@ -173,10 +176,10 @@ export default function HomePage() {
       new Set(staffMembers.flatMap(s => s.assignedClass || []).filter(Boolean))
     );
     uniqueClasses.sort((a, b) => {
-        const aLKG = a === "LKG";
-        const bLKG = b === "LKG";
-        const aUKG = a === "UKG";
-        const bUKG = b === "UKG";
+        const aLKG = String(a) === "LKG";
+        const bLKG = String(b) === "LKG";
+        const aUKG = String(a) === "UKG";
+        const bUKG = String(b) === "UKG";
 
         if (aLKG && !bLKG) return -1;
         if (!aLKG && bLKG) return 1;
@@ -186,13 +189,11 @@ export default function HomePage() {
         if (aLKG && bUKG) return -1; 
         if (aUKG && bLKG) return 1;  
 
-
         const aNum = parseInt(String(a).replace("Class ", ""), 10);
         const bNum = parseInt(String(b).replace("Class ", ""), 10);
 
         if (!isNaN(aNum) && isNaN(bNum)) return 1; 
         if (isNaN(aNum) && !isNaN(bNum)) return -1;
-
 
         if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
         return String(a).localeCompare(String(b)); 
