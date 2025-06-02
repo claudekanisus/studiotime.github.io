@@ -1,7 +1,9 @@
+
 export interface StaffMember {
   id: string;
   name: string;
-  subject: string; // Added subject field
+  subject: string;
+  assignedClass: string; // Added assignedClass field
 }
 
 // Matches the AI output structure for a single activity/assignment

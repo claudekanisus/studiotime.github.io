@@ -1,7 +1,8 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
-import type { StaffMember, TimetableData, TimetableSlotInfo, TimetableActivity } from "@/lib/types";
+import type { StaffMember, TimetableData, TimetableSlotInfo } from "@/lib/types";
 import { StaffForm } from "@/components/staff/StaffForm";
 import { StaffList } from "@/components/staff/StaffList";
 import { TimetableGrid } from "@/components/timetable/TimetableGrid";
@@ -32,13 +33,14 @@ export default function HomePage() {
   useEffect(() => {
     const storedStaff = localStorage.getItem("timetableGeniusStaff");
     if (storedStaff) {
-      const parsedStaff = JSON.parse(storedStaff) as Partial<StaffMember>[]; // Use Partial initially
-      const staffWithSubjectsEnsured = parsedStaff.map(staff => ({
-        id: staff.id || crypto.randomUUID(), // Ensure ID exists
-        name: staff.name || "Unknown", // Ensure name exists
-        subject: staff.subject || "", // Default to empty string if subject is missing
+      const parsedStaff = JSON.parse(storedStaff) as Partial<StaffMember>[];
+      const staffWithDetailsEnsured = parsedStaff.map(staff => ({
+        id: staff.id || crypto.randomUUID(),
+        name: staff.name || "Unknown",
+        subject: staff.subject || "", 
+        assignedClass: staff.assignedClass || "", // Default to empty string if assignedClass is missing
       }));
-      setStaffMembers(staffWithSubjectsEnsured as StaffMember[]);
+      setStaffMembers(staffWithDetailsEnsured as StaffMember[]);
     }
     const storedTimetable = localStorage.getItem("timetableGeniusTimetable");
     if (storedTimetable) {
@@ -59,19 +61,24 @@ export default function HomePage() {
   }, [timetable]);
 
 
-  const handleStaffSubmit = (data: { name: string; subject: string }) => {
+  const handleStaffSubmit = (data: { name: string; subject: string; assignedClass: string }) => {
     if (editingStaff) {
       setStaffMembers(
         staffMembers.map((s) =>
-          s.id === editingStaff.id ? { ...s, name: data.name, subject: data.subject } : s
+          s.id === editingStaff.id ? { ...s, name: data.name, subject: data.subject, assignedClass: data.assignedClass } : s
         )
       );
-      toast({ title: "Staff Updated", description: `${data.name} (${data.subject}) has been updated.` });
+      toast({ title: "Staff Updated", description: `${data.name} (${data.subject}, ${data.assignedClass}) has been updated.` });
       setEditingStaff(null);
     } else {
-      const newStaff: StaffMember = { id: crypto.randomUUID(), name: data.name, subject: data.subject };
+      const newStaff: StaffMember = { 
+        id: crypto.randomUUID(), 
+        name: data.name, 
+        subject: data.subject,
+        assignedClass: data.assignedClass 
+      };
       setStaffMembers([...staffMembers, newStaff]);
-      toast({ title: "Staff Added", description: `${data.name} (${data.subject}) has been added.` });
+      toast({ title: "Staff Added", description: `${data.name} (${data.subject}, ${data.assignedClass}) has been added.` });
     }
   };
 
@@ -106,10 +113,6 @@ export default function HomePage() {
         breakCount: AI_BREAK_COUNT,
       };
       const result: SuggestTimetableOutput = await suggestTimetable(input);
-      // The AI returns a 3D array: [day][period][activity_slot_object_or_null_array]
-      // Ensure it's always an array for the innermost, even if schema says nullable obj
-      // The schema is already z.array(z.array(z.array(z.object({ staffId: string }).nullable())))
-      // So result.timetable IS TimetableData
       setTimetable(result.timetable);
       toast({
         title: "Timetable Generated",
@@ -139,11 +142,9 @@ export default function HomePage() {
       daySchedule.map(periodActivities => [...periodActivities])
     );
     
-    // Ensure the structure exists
     if (!newTimetable[dayIndex]) newTimetable[dayIndex] = [];
     if (!newTimetable[dayIndex][aiPeriodIndex]) newTimetable[dayIndex][aiPeriodIndex] = [];
 
-    // Update the specific activity slot
     newTimetable[dayIndex][aiPeriodIndex][activitySlotIndex] = newStaffId ? { staffId: newStaffId } : null;
     
     setTimetable(newTimetable);

@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -16,7 +17,15 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PlusCircle, Save, BookOpen } from "lucide-react";
+import { PlusCircle, Save, BookOpen, Users2 } from "lucide-react";
+import { CLASS_LEVELS } from "@/lib/constants";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const staffFormSchema = z.object({
   name: z.string().min(2, {
@@ -24,6 +33,9 @@ const staffFormSchema = z.object({
   }),
   subject: z.string().min(2, {
     message: "Subject must be at least 2 characters.",
+  }),
+  assignedClass: z.string().min(1, {
+    message: "Please select a class.",
   }),
 });
 
@@ -38,22 +50,22 @@ interface StaffFormProps {
 export function StaffForm({ staffMember, onSubmit, onCancel }: StaffFormProps) {
   const form = useForm<StaffFormValues>({
     resolver: zodResolver(staffFormSchema),
-    defaultValues: staffMember ? { name: staffMember.name, subject: staffMember.subject || "" } : { name: "", subject: "" },
+    defaultValues: staffMember
+      ? { name: staffMember.name, subject: staffMember.subject || "", assignedClass: staffMember.assignedClass || "" }
+      : { name: "", subject: "", assignedClass: "" },
   });
 
-  // Ensure form resets to new staffMember prop if it changes (e.g. when editing a new staff member)
   React.useEffect(() => {
     if (staffMember) {
-      form.reset({ name: staffMember.name, subject: staffMember.subject || "" });
+      form.reset({ name: staffMember.name, subject: staffMember.subject || "", assignedClass: staffMember.assignedClass || "" });
     } else {
-      form.reset({ name: "", subject: ""});
+      form.reset({ name: "", subject: "", assignedClass: "" });
     }
   }, [staffMember, form]);
 
-
   const handleSubmit = (data: StaffFormValues) => {
     onSubmit(data);
-    if (!staffMember) { // Reset form only if it's for adding new staff
+    if (!staffMember) {
       form.reset();
     }
   };
@@ -93,6 +105,32 @@ export function StaffForm({ staffMember, onSubmit, onCancel }: StaffFormProps) {
                   <FormControl>
                     <Input placeholder="e.g. Mathematics" {...field} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="assignedClass"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-1">
+                    <Users2 className="h-4 w-4 text-muted-foreground" /> Assigned Class
+                  </FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a class level" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {CLASS_LEVELS.map((level) => (
+                        <SelectItem key={level} value={level}>
+                          {level}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

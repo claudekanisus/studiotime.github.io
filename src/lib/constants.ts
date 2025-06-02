@@ -1,3 +1,4 @@
+
 export const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 export const AI_PERIODS_PER_DAY = 8; // Number of periods AI generates
 export const AI_DAYS_PER_WEEK = 5;
@@ -18,3 +19,18 @@ export const DISPLAY_PERIOD_LABELS = [
 
 // Max number of parallel activities/staff the UI will attempt to render per slot
 export const MAX_ACTIVITIES_PER_SLOT_DISPLAY = 2;
+
+export const CLASS_LEVELS = [
+  "LKG",
+  "UKG",
+  "Class 1",
+  "Class 2",
+  "Class 3",
+  "Class 4",
+  "Class 5",
+  "Class 6",
+  "Class 7",
+  "Class 8",
+  "Class 9",
+  "Class 10",
+];

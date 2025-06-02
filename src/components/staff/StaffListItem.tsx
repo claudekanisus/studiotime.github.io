@@ -1,8 +1,9 @@
+
 "use client";
 
 import type { StaffMember } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Edit, Trash2, User, BookOpen } from "lucide-react";
+import { Edit, Trash2, User, BookOpen, Users2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,11 +29,18 @@ export function StaffListItem({ staffMember, onEdit, onDelete }: StaffListItemPr
         <User className="h-5 w-5 text-primary shrink-0" />
         <div className="flex flex-col">
             <span className="font-body font-semibold">{staffMember.name}</span>
-            {staffMember.subject && (
-                 <span className="text-xs text-muted-foreground flex items-center gap-1">
-                    <BookOpen className="h-3 w-3"/> {staffMember.subject}
-                 </span>
-            )}
+            <div className="flex flex-wrap gap-x-2">
+              {staffMember.subject && (
+                   <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <BookOpen className="h-3 w-3"/> {staffMember.subject}
+                   </span>
+              )}
+              {staffMember.assignedClass && (
+                   <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Users2 className="h-3 w-3"/> {staffMember.assignedClass}
+                   </span>
+              )}
+            </div>
         </div>
       </div>
       <div className="flex gap-2">
