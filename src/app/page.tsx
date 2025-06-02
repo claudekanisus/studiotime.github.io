@@ -10,12 +10,12 @@ import { EditSlotDialog } from "@/components/timetable/EditSlotDialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { suggestTimetable, type SuggestTimetableInput, type SuggestTimetableOutput } from "@/ai/flows/suggest-timetable";
-import { AI_PERIODS_PER_DAY, AI_DAYS_PER_WEEK, AI_BREAK_COUNT, CLASS_LEVELS } from "@/lib/constants";
+import { AI_PERIODS_PER_DAY, AI_DAYS_PER_WEEK, AI_BREAK_COUNT } from "@/lib/constants";
 import { AppLogo } from "@/components/icons";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Bot, Users, Filter, BookOpen, Columns } from "lucide-react";
+import { Loader2, Bot, Users, Filter, Columns } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { getStaffMemberByIdOrIndex } from "@/lib/utils";
 
 export default function HomePage() {
@@ -39,7 +39,7 @@ export default function HomePage() {
         id: staff.id || crypto.randomUUID(),
         name: staff.name || "Unknown",
         subject: staff.subject || "", 
-        assignedClass: staff.assignedClass || "",
+        assignedClass: Array.isArray(staff.assignedClass) ? staff.assignedClass : (staff.assignedClass ? [staff.assignedClass] : [])
       }));
       setStaffMembers(staffWithDetailsEnsured as StaffMember[]);
     }
@@ -60,14 +60,14 @@ export default function HomePage() {
   }, [timetable]);
 
 
-  const handleStaffSubmit = (data: { name: string; subject: string; assignedClass: string }) => {
+  const handleStaffSubmit = (data: { name: string; subject: string; assignedClass: string[] }) => {
     if (editingStaff) {
       setStaffMembers(
         staffMembers.map((s) =>
           s.id === editingStaff.id ? { ...s, name: data.name, subject: data.subject, assignedClass: data.assignedClass } : s
         )
       );
-      toast({ title: "Staff Updated", description: `${data.name} (${data.subject}, ${data.assignedClass}) has been updated.` });
+      toast({ title: "Staff Updated", description: `${data.name} (${data.subject}, ${data.assignedClass.join(', ')}) has been updated.` });
       setEditingStaff(null);
     } else {
       const newStaff: StaffMember = { 
@@ -77,7 +77,7 @@ export default function HomePage() {
         assignedClass: data.assignedClass 
       };
       setStaffMembers([...staffMembers, newStaff]);
-      toast({ title: "Staff Added", description: `${data.name} (${data.subject}, ${data.assignedClass}) has been added.` });
+      toast({ title: "Staff Added", description: `${data.name} (${data.subject}, ${data.assignedClass.join(', ')}) has been added.` });
     }
   };
 
@@ -86,19 +86,28 @@ export default function HomePage() {
   };
 
   const handleDeleteStaff = (staffId: string) => {
+    const deletedStaffMember = staffMembers.find(s => s.id === staffId);
     setStaffMembers(staffMembers.filter((s) => s.id !== staffId));
     toast({ title: "Staff Deleted", description: `Staff member has been deleted.` });
+    
     if (editingStaff?.id === staffId) {
       setEditingStaff(null);
     }
-     // If the deleted staff was the one being filtered by, clear the filter
     if (selectedStaffIdForFilter === staffId) {
       setSelectedStaffIdForFilter(null);
     }
-    // If the deleted staff's class is no longer present, reset class view if it was selected
-    const remainingClasses = new Set(staffMembers.filter(s => s.id !== staffId).map(s => s.assignedClass).filter(Boolean));
-    if (selectedClassView !== "all" && !remainingClasses.has(selectedClassView)) {
-        setSelectedClassView("all");
+
+    // If the deleted staff's class(es) are no longer present, reset class view if it was selected
+    if (deletedStaffMember && selectedClassView !== "all" && deletedStaffMember.assignedClass.includes(selectedClassView)) {
+        const remainingClassesForThisView = new Set(
+            staffMembers
+                .filter(s => s.id !== staffId) // consider only remaining staff
+                .flatMap(s => s.assignedClass) // get all their class assignments
+                .filter(Boolean) // filter out any falsy values
+        );
+        if (!remainingClassesForThisView.has(selectedClassView)) {
+            setSelectedClassView("all");
+        }
     }
   };
 
@@ -159,9 +168,10 @@ export default function HomePage() {
     toast({ title: "Slot Updated", description: "Timetable slot has been manually updated." });
   };
 
-  const availableClasses = useMemo(() => {
-    const uniqueClasses = Array.from(new Set(staffMembers.map(s => s.assignedClass).filter(Boolean)));
-    // Sort class levels logically
+ const availableClasses = useMemo(() => {
+    const uniqueClasses = Array.from(
+      new Set(staffMembers.flatMap(s => s.assignedClass || []).filter(Boolean))
+    );
     uniqueClasses.sort((a, b) => {
         const aLKG = a === "LKG";
         const bLKG = b === "LKG";
@@ -173,19 +183,19 @@ export default function HomePage() {
         if (aUKG && !bUKG && !bLKG) return -1;
         if (!aUKG && bUKG && !aLKG) return 1;
         
-        if (aLKG && bUKG) return -1; // LKG before UKG
-        if (aUKG && bLKG) return 1;  // UKG after LKG
+        if (aLKG && bUKG) return -1; 
+        if (aUKG && bLKG) return 1;  
 
 
-        const aNum = parseInt(a.replace("Class ", ""), 10);
-        const bNum = parseInt(b.replace("Class ", ""), 10);
+        const aNum = parseInt(String(a).replace("Class ", ""), 10);
+        const bNum = parseInt(String(b).replace("Class ", ""), 10);
 
-        if (!isNaN(aNum) && isNaN(bNum)) return 1; // numbers after LKG/UKG
+        if (!isNaN(aNum) && isNaN(bNum)) return 1; 
         if (isNaN(aNum) && !isNaN(bNum)) return -1;
 
 
         if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
-        return a.localeCompare(b); // Fallback for LKG/UKG vs each other or other non-numeric
+        return String(a).localeCompare(String(b)); 
     });
     return ["all", ...uniqueClasses];
   }, [staffMembers]);
@@ -199,7 +209,7 @@ export default function HomePage() {
         periodActivities.map(activity => {
           if (!activity || !activity.staffId) return null;
           const staffMember = getStaffMemberByIdOrIndex(activity.staffId, staffMembers);
-          if (staffMember && staffMember.assignedClass === selectedClassView) {
+          if (staffMember && staffMember.assignedClass.includes(selectedClassView)) {
             return activity;
           }
           return null;
