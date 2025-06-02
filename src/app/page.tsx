@@ -64,7 +64,7 @@ export default function HomePage() {
     if (editingStaff) {
       setStaffMembers(
         staffMembers.map((s) =>
-          s.id === editingStaff.id ? { ...s, name: data.name, subject: data.subject, assignedClass: data.assignedClass } : s
+          s.id === editingStaff.id ? { ...s, name: data.name, subject: data.subject, assignedClass: data.assignedClass.sort() } : s
         )
       );
       toast({ title: "Staff Updated", description: `${data.name} (${data.subject}, ${data.assignedClass.join(', ')}) has been updated.` });
@@ -74,7 +74,7 @@ export default function HomePage() {
         id: crypto.randomUUID(), 
         name: data.name, 
         subject: data.subject,
-        assignedClass: data.assignedClass 
+        assignedClass: data.assignedClass.sort() 
       };
       setStaffMembers([...staffMembers, newStaff]);
       toast({ title: "Staff Added", description: `${data.name} (${data.subject}, ${data.assignedClass.join(', ')}) has been added.` });
@@ -97,14 +97,12 @@ export default function HomePage() {
       setSelectedStaffIdForFilter(null);
     }
 
-    if (deletedStaffMember && selectedClassView !== "all" && deletedStaffMember.assignedClass.includes(selectedClassView)) {
-        const remainingClassesForThisView = new Set(
-            staffMembers
-                .filter(s => s.id !== staffId) 
-                .flatMap(s => s.assignedClass) 
-                .filter(Boolean) 
-        );
-        if (!remainingClassesForThisView.has(selectedClassView)) {
+    // If the deleted staff was the last one for the currently selected class view, reset view to "all"
+    if (deletedStaffMember && selectedClassView !== "all") {
+        const isSelectedClassStillPresent = staffMembers
+            .filter(s => s.id !== staffId) // consider staff list after deletion
+            .some(s => s.assignedClass.includes(selectedClassView));
+        if (!isSelectedClassStillPresent) {
             setSelectedClassView("all");
         }
     }
@@ -122,8 +120,15 @@ export default function HomePage() {
 
     setIsLoading(true);
     try {
+      const staffDetailsForAI = staffMembers.map((staff, index) => ({
+        id: index.toString(), // AI will use this index as staffId
+        assignedClasses: staff.assignedClass,
+        // name: staff.name, // Optionally pass name for AI's internal understanding, but not strictly needed for schema
+        // subject: staff.subject, // Optionally pass subject
+      }));
+
       const input: SuggestTimetableInput = {
-        staffCount: staffMembers.length,
+        staffDetails: staffDetailsForAI,
         periodsPerDay: AI_PERIODS_PER_DAY,
         daysPerWeek: AI_DAYS_PER_WEEK,
         breakCount: AI_BREAK_COUNT,
@@ -137,8 +142,8 @@ export default function HomePage() {
     } catch (error) {
       console.error("Error generating timetable:", error);
       let description = "Could not generate timetable. Check console for errors.";
-      if (error instanceof Error && (error.message.includes('503') || error.message.toLowerCase().includes('service unavailable'))) {
-        description = "The AI model is currently overloaded. Please try again in a few moments.";
+      if (error instanceof Error && (error.message.includes('503') || error.message.toLowerCase().includes('service unavailable') || error.message.toLowerCase().includes('model is overloaded'))) {
+        description = "The AI model is currently overloaded or unavailable. Please try again in a few moments.";
       }
       toast({
         title: "Generation Failed",
@@ -165,7 +170,22 @@ export default function HomePage() {
     if (!newTimetable[dayIndex]) newTimetable[dayIndex] = [];
     if (!newTimetable[dayIndex][aiPeriodIndex]) newTimetable[dayIndex][aiPeriodIndex] = [];
 
-    newTimetable[dayIndex][aiPeriodIndex][activitySlotIndex] = newStaffId ? { staffId: newStaffId } : null;
+    // newStaffId from EditSlotDialog is already the staff member's actual UUID (or null)
+    // We need to find the AI index for this staff member
+    let staffIdForTimetable: string | null = null;
+    if (newStaffId) {
+      const staffIndex = staffMembers.findIndex(s => s.id === newStaffId);
+      if (staffIndex !== -1) {
+        staffIdForTimetable = staffIndex.toString();
+      } else {
+        // This case should ideally not happen if staffList in EditSlotDialog is correct
+        console.warn("Could not find AI index for selected staff UUID:", newStaffId);
+        toast({ title: "Error Updating Slot", description: "Could not map selected staff to AI index.", variant: "destructive" });
+        return;
+      }
+    }
+    
+    newTimetable[dayIndex][aiPeriodIndex][activitySlotIndex] = staffIdForTimetable ? { staffId: staffIdForTimetable } : null;
     
     setTimetable(newTimetable);
     toast({ title: "Slot Updated", description: "Timetable slot has been manually updated." });
@@ -176,10 +196,12 @@ export default function HomePage() {
       new Set(staffMembers.flatMap(s => s.assignedClass || []).filter(Boolean))
     );
     uniqueClasses.sort((a, b) => {
-        const aLKG = String(a) === "LKG";
-        const bLKG = String(b) === "LKG";
-        const aUKG = String(a) === "UKG";
-        const bUKG = String(b) === "UKG";
+        const aStr = String(a);
+        const bStr = String(b);
+        const aLKG = aStr === "LKG";
+        const bLKG = bStr === "LKG";
+        const aUKG = aStr === "UKG";
+        const bUKG = bStr === "UKG";
 
         if (aLKG && !bLKG) return -1;
         if (!aLKG && bLKG) return 1;
@@ -189,14 +211,14 @@ export default function HomePage() {
         if (aLKG && bUKG) return -1; 
         if (aUKG && bLKG) return 1;  
 
-        const aNum = parseInt(String(a).replace("Class ", ""), 10);
-        const bNum = parseInt(String(b).replace("Class ", ""), 10);
+        const aNum = parseInt(aStr.replace("Class ", ""), 10);
+        const bNum = parseInt(bStr.replace("Class ", ""), 10);
 
         if (!isNaN(aNum) && isNaN(bNum)) return 1; 
         if (isNaN(aNum) && !isNaN(bNum)) return -1;
 
         if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
-        return String(a).localeCompare(String(b)); 
+        return aStr.localeCompare(bStr); 
     });
     return ["all", ...uniqueClasses];
   }, [staffMembers]);
@@ -209,9 +231,10 @@ export default function HomePage() {
       daySchedule.map(periodActivities =>
         periodActivities.map(activity => {
           if (!activity || !activity.staffId) return null;
+          // activity.staffId is the AI index ("0", "1", etc.)
           const staffMember = getStaffMemberByIdOrIndex(activity.staffId, staffMembers);
           if (staffMember && staffMember.assignedClass.includes(selectedClassView)) {
-            return activity;
+            return activity; // Keep the original activity object with AI staffId
           }
           return null;
         })
@@ -337,3 +360,4 @@ export default function HomePage() {
   );
 }
 
+    
