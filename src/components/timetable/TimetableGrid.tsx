@@ -1,10 +1,12 @@
 "use client";
 
+import * as React from "react";
 import type { StaffMember, TimetableData, TimetableActivity, TimetableSlotInfo } from "@/lib/types";
 import { DAYS_OF_WEEK, DISPLAY_PERIOD_LABELS } from "@/lib/constants";
 import { TimetableCell } from "./TimetableCell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CalendarDays, VenetianMask } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface TimetableGridProps {
   timetable: TimetableData | null;
