@@ -1,6 +1,7 @@
+
 "use client";
 
-import type { StaffMember, TimetableSlotInfo, TimetableActivity } from "@/lib/types";
+import type { StaffMember, TimetableSlotInfo } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,6 +22,7 @@ import {
 import { useState, useEffect } from "react";
 import { XCircle, CheckCircle, Edit3 } from "lucide-react";
 import { DAYS_OF_WEEK, DISPLAY_PERIOD_LABELS } from "@/lib/constants";
+import { getStaffMemberByIdOrIndex } from "@/lib/utils"; // Import the utility
 
 interface EditSlotDialogProps {
   isOpen: boolean;
@@ -32,19 +34,20 @@ interface EditSlotDialogProps {
 
 // Helper to map AI period index to display label (considering breaks)
 const getDisplayPeriodLabelFromAiIndex = (aiPeriodIndex: number): string => {
+  if (aiPeriodIndex < 0) return "Invalid Period"; // Guard against negative index if passed before init
   let displayIndex = 0;
-  let currentAiPeriod = 0;
-  while(currentAiPeriod < aiPeriodIndex && displayIndex < DISPLAY_PERIOD_LABELS.length -1) {
-    if (!DISPLAY_PERIOD_LABELS[displayIndex].toLowerCase().includes('break')) {
+  let currentAiPeriod = 0; // This counts teaching periods from the AI's perspective (0-7)
+  
+  // Iterate through DISPLAY_PERIOD_LABELS to find the one that corresponds to aiPeriodIndex
+  for (let i = 0; i < DISPLAY_PERIOD_LABELS.length; i++) {
+    if (currentAiPeriod === aiPeriodIndex && !DISPLAY_PERIOD_LABELS[i].toLowerCase().includes('break')) {
+      return DISPLAY_PERIOD_LABELS[i];
+    }
+    if (!DISPLAY_PERIOD_LABELS[i].toLowerCase().includes('break')) {
       currentAiPeriod++;
     }
-    displayIndex++;
   }
-  // Ensure we find the correct teaching period label
-  while(DISPLAY_PERIOD_LABELS[displayIndex].toLowerCase().includes('break') && displayIndex < DISPLAY_PERIOD_LABELS.length -1) {
-    displayIndex++;
-  }
-  return DISPLAY_PERIOD_LABELS[displayIndex] || `Period ${aiPeriodIndex + 1}`;
+  return DISPLAY_PERIOD_LABELS[DISPLAY_PERIOD_LABELS.length - 1] || `Period ${aiPeriodIndex + 1}`; // Fallback
 };
 
 
@@ -52,26 +55,21 @@ export function EditSlotDialog({ isOpen, onClose, slotInfo, staffList, onSave }:
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (slotInfo && slotInfo.currentAssignment) {
-      // The AI might return "0", "1" etc. Map this to actual staff ID if needed or use as is.
-      // For manual edit, we should use the StaffMember.id (UUID)
-      // If currentAssignment.staffId is numeric, map it to staffList[id].id
-      const aiStaffId = slotInfo.currentAssignment.staffId;
-      const staffIndex = parseInt(aiStaffId, 10);
-      if (!isNaN(staffIndex) && staffIndex >= 0 && staffIndex < staffList.length) {
-        setSelectedStaffId(staffList[staffIndex].id);
-      } else {
-        // If it's already a UUID (from previous manual edit)
-        setSelectedStaffId(aiStaffId);
-      }
-    } else {
-      setSelectedStaffId(null);
+    if (isOpen && slotInfo && slotInfo.currentAssignment && slotInfo.currentAssignment.staffId) {
+      // currentAssignment.staffId could be an AI index ("0") or a UUID.
+      // We want to set selectedStaffId to the actual StaffMember.id (UUID).
+      const staffMember = getStaffMemberByIdOrIndex(slotInfo.currentAssignment.staffId, staffList);
+      setSelectedStaffId(staffMember ? staffMember.id : null);
+    } else if (isOpen) {
+      setSelectedStaffId(null); // Reset if no assignment or dialog reopens
     }
-  }, [slotInfo, staffList]);
+  }, [isOpen, slotInfo, staffList]);
+
 
   if (!slotInfo) return null;
 
   const handleSave = () => {
+    // selectedStaffId here is guaranteed to be a StaffMember.id (UUID) or null
     onSave(slotInfo.dayIndex, slotInfo.periodIndex, slotInfo.activitySlotIndex, selectedStaffId);
     onClose();
   };
@@ -80,7 +78,7 @@ export function EditSlotDialog({ isOpen, onClose, slotInfo, staffList, onSave }:
   const periodName = getDisplayPeriodLabelFromAiIndex(slotInfo.periodIndex);
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if(!open) onClose(); }}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 font-headline">
@@ -106,7 +104,7 @@ export function EditSlotDialog({ isOpen, onClose, slotInfo, staffList, onSave }:
               </SelectItem>
               {staffList.map((staff) => (
                 <SelectItem key={staff.id} value={staff.id}>
-                  {staff.name}
+                  {staff.name} ({staff.assignedClass})
                 </SelectItem>
               ))}
             </SelectContent>

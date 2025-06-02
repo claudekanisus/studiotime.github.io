@@ -1,8 +1,8 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
-import type { StaffMember, TimetableData, TimetableSlotInfo } from "@/lib/types";
+import { useState, useEffect, useMemo } from "react";
+import type { StaffMember, TimetableData, TimetableSlotInfo, TimetableActivity } from "@/lib/types";
 import { StaffForm } from "@/components/staff/StaffForm";
 import { StaffList } from "@/components/staff/StaffList";
 import { TimetableGrid } from "@/components/timetable/TimetableGrid";
@@ -10,12 +10,13 @@ import { EditSlotDialog } from "@/components/timetable/EditSlotDialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { suggestTimetable, type SuggestTimetableInput, type SuggestTimetableOutput } from "@/ai/flows/suggest-timetable";
-import { AI_PERIODS_PER_DAY, AI_DAYS_PER_WEEK, AI_BREAK_COUNT, DAYS_OF_WEEK } from "@/lib/constants";
+import { AI_PERIODS_PER_DAY, AI_DAYS_PER_WEEK, AI_BREAK_COUNT, CLASS_LEVELS } from "@/lib/constants";
 import { AppLogo } from "@/components/icons";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Bot, Users, Filter } from "lucide-react";
+import { Loader2, Bot, Users, Filter, BookOpen, Columns } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getStaffMemberByIdOrIndex } from "@/lib/utils";
 
 export default function HomePage() {
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
@@ -25,11 +26,11 @@ export default function HomePage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingSlotInfo, setEditingSlotInfo] = useState<TimetableSlotInfo | null>(null);
   const [selectedStaffIdForFilter, setSelectedStaffIdForFilter] = useState<string | null>(null);
+  const [selectedClassView, setSelectedClassView] = useState<string>("all");
 
 
   const { toast } = useToast();
 
-  // Load staff from localStorage on initial render
   useEffect(() => {
     const storedStaff = localStorage.getItem("timetableGeniusStaff");
     if (storedStaff) {
@@ -38,7 +39,7 @@ export default function HomePage() {
         id: staff.id || crypto.randomUUID(),
         name: staff.name || "Unknown",
         subject: staff.subject || "", 
-        assignedClass: staff.assignedClass || "", // Default to empty string if assignedClass is missing
+        assignedClass: staff.assignedClass || "",
       }));
       setStaffMembers(staffWithDetailsEnsured as StaffMember[]);
     }
@@ -48,12 +49,10 @@ export default function HomePage() {
     }
   }, []);
 
-  // Save staff to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem("timetableGeniusStaff", JSON.stringify(staffMembers));
   }, [staffMembers]);
 
-  // Save timetable to localStorage
   useEffect(() => {
     if (timetable) {
       localStorage.setItem("timetableGeniusTimetable", JSON.stringify(timetable));
@@ -91,6 +90,15 @@ export default function HomePage() {
     toast({ title: "Staff Deleted", description: `Staff member has been deleted.` });
     if (editingStaff?.id === staffId) {
       setEditingStaff(null);
+    }
+     // If the deleted staff was the one being filtered by, clear the filter
+    if (selectedStaffIdForFilter === staffId) {
+      setSelectedStaffIdForFilter(null);
+    }
+    // If the deleted staff's class is no longer present, reset class view if it was selected
+    const remainingClasses = new Set(staffMembers.filter(s => s.id !== staffId).map(s => s.assignedClass).filter(Boolean));
+    if (selectedClassView !== "all" && !remainingClasses.has(selectedClassView)) {
+        setSelectedClassView("all");
     }
   };
 
@@ -151,6 +159,56 @@ export default function HomePage() {
     toast({ title: "Slot Updated", description: "Timetable slot has been manually updated." });
   };
 
+  const availableClasses = useMemo(() => {
+    const uniqueClasses = Array.from(new Set(staffMembers.map(s => s.assignedClass).filter(Boolean)));
+    // Sort class levels logically
+    uniqueClasses.sort((a, b) => {
+        const aLKG = a === "LKG";
+        const bLKG = b === "LKG";
+        const aUKG = a === "UKG";
+        const bUKG = b === "UKG";
+
+        if (aLKG && !bLKG) return -1;
+        if (!aLKG && bLKG) return 1;
+        if (aUKG && !bUKG && !bLKG) return -1;
+        if (!aUKG && bUKG && !aLKG) return 1;
+        
+        if (aLKG && bUKG) return -1; // LKG before UKG
+        if (aUKG && bLKG) return 1;  // UKG after LKG
+
+
+        const aNum = parseInt(a.replace("Class ", ""), 10);
+        const bNum = parseInt(b.replace("Class ", ""), 10);
+
+        if (!isNaN(aNum) && isNaN(bNum)) return 1; // numbers after LKG/UKG
+        if (isNaN(aNum) && !isNaN(bNum)) return -1;
+
+
+        if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
+        return a.localeCompare(b); // Fallback for LKG/UKG vs each other or other non-numeric
+    });
+    return ["all", ...uniqueClasses];
+  }, [staffMembers]);
+
+  const timetableForDisplay = useMemo(() => {
+    if (!timetable) return null;
+    if (selectedClassView === "all") return timetable;
+
+    return timetable.map(daySchedule =>
+      daySchedule.map(periodActivities =>
+        periodActivities.map(activity => {
+          if (!activity || !activity.staffId) return null;
+          const staffMember = getStaffMemberByIdOrIndex(activity.staffId, staffMembers);
+          if (staffMember && staffMember.assignedClass === selectedClassView) {
+            return activity;
+          }
+          return null;
+        })
+      )
+    );
+  }, [timetable, selectedClassView, staffMembers]);
+
+
   return (
     <div className="min-h-screen flex flex-col items-center p-4 md:p-8 bg-background font-body">
       <header className="w-full max-w-6xl mb-8 text-center md:text-left">
@@ -181,8 +239,8 @@ export default function HomePage() {
 
         <section id="timetable-controls" className="space-y-4">
             <Card className="shadow-lg">
-                <CardContent className="p-4 flex flex-col sm:flex-row gap-4 items-center justify-between">
-                    <Button onClick={handleGenerateTimetable} disabled={isLoading} size="lg">
+                <CardContent className="p-4 flex flex-col sm:flex-row gap-4 items-start justify-between flex-wrap">
+                    <Button onClick={handleGenerateTimetable} disabled={isLoading} size="lg" className="w-full sm:w-auto">
                         {isLoading ? (
                         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                         ) : (
@@ -190,32 +248,53 @@ export default function HomePage() {
                         )}
                         {timetable ? "Regenerate Timetable" : "Generate Timetable"}
                     </Button>
-                    {staffMembers.length > 0 && timetable && (
-                        <div className="flex items-center gap-2 w-full sm:w-auto">
-                            <Filter className="h-5 w-5 text-muted-foreground"/>
-                            <Select
-                                value={selectedStaffIdForFilter || "all"}
-                                onValueChange={(value) => setSelectedStaffIdForFilter(value === "all" ? null : value)}
-                                
-                            >
-                                <SelectTrigger className="w-full sm:w-[200px]">
-                                <SelectValue placeholder="Filter by staff..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                <SelectItem value="all">
-                                    <div className="flex items-center gap-2">
-                                    <Users className="h-4 w-4 text-muted-foreground" /> Show All Staff
-                                    </div>
-                                </SelectItem>
-                                {staffMembers.map((staff) => (
-                                    <SelectItem key={staff.id} value={staff.id}>
-                                    {staff.name}
+                    <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto items-stretch">
+                        {timetable && (
+                             <div className="flex items-center gap-2 w-full sm:w-auto">
+                                <Columns className="h-5 w-5 text-muted-foreground"/>
+                                <Select
+                                    value={selectedClassView}
+                                    onValueChange={setSelectedClassView}
+                                >
+                                    <SelectTrigger className="w-full sm:w-[200px]">
+                                    <SelectValue placeholder="View timetable for..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                    {availableClasses.map((classLevel) => (
+                                        <SelectItem key={classLevel} value={classLevel}>
+                                        {classLevel === "all" ? "All Classes" : classLevel}
+                                        </SelectItem>
+                                    ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
+                        {staffMembers.length > 0 && timetable && (
+                            <div className="flex items-center gap-2 w-full sm:w-auto">
+                                <Filter className="h-5 w-5 text-muted-foreground"/>
+                                <Select
+                                    value={selectedStaffIdForFilter || "all"}
+                                    onValueChange={(value) => setSelectedStaffIdForFilter(value === "all" ? null : value)}
+                                >
+                                    <SelectTrigger className="w-full sm:w-[200px]">
+                                    <SelectValue placeholder="Filter by staff..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                    <SelectItem value="all">
+                                        <div className="flex items-center gap-2">
+                                        <Users className="h-4 w-4 text-muted-foreground" /> Show All Staff
+                                        </div>
                                     </SelectItem>
-                                ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    )}
+                                    {staffMembers.map((staff) => (
+                                        <SelectItem key={staff.id} value={staff.id}>
+                                        {staff.name}
+                                        </SelectItem>
+                                    ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
+                    </div>
                 </CardContent>
             </Card>
         </section>
@@ -223,10 +302,11 @@ export default function HomePage() {
 
         <section id="timetable-display">
           <TimetableGrid 
-            timetable={timetable} 
+            timetable={timetableForDisplay} 
             staffList={staffMembers} 
             onEditSlotRequest={handleEditSlotRequest}
             selectedStaffIdForFilter={selectedStaffIdForFilter}
+            selectedClassView={selectedClassView}
           />
         </section>
       </main>
@@ -245,3 +325,4 @@ export default function HomePage() {
     </div>
   );
 }
+
