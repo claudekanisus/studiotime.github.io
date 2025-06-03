@@ -58,7 +58,7 @@ const prompt = ai.definePrompt({
     {{#each staffDetails}}
     - Staff ID (index): {{{this.id}}}, Teaches: {{#if assignedClasses}}{{#each assignedClasses}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None{{/if}}
     {{/each}}
-  - classNames: A list of all class names for which you must generate a timetable. Example: {{#each classNames}}"{{{this}}"{{#unless @last}}, {{/unless}}{{/each}}.
+  - classNames: A list of all class names for which you must generate a timetable. Example: {{#each classNames}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}.
   - periodsPerDay: {{{periodsPerDay}}} (number of teaching periods, excluding breaks).
   - daysPerWeek: {{{daysPerWeek}}}.
   - breakCount: {{{breakCount}}} (number of breaks per day for EACH class).
@@ -116,5 +116,3 @@ const suggestAllTimetablesFlow = ai.defineFlow(
     return output;
   }
 );
-
-    
