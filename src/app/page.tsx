@@ -21,13 +21,12 @@ import { getStaffMemberByIdOrIndex } from "@/lib/utils";
 export default function HomePage() {
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
-  const [timetable, setTimetable] = useState<TimetableData | null>(null);
+  const [timetables, setTimetables] = useState<Record<string, TimetableData> | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingSlotInfo, setEditingSlotInfo] = useState<TimetableSlotInfo | null>(null);
   const [selectedStaffIdForFilter, setSelectedStaffIdForFilter] = useState<string | null>(null);
-  const [selectedClassView, setSelectedClassView] = useState<string>("all");
-
+  const [selectedClassView, setSelectedClassView] = useState<string>("all"); // "all" or specific class name
 
   const { toast } = useToast();
 
@@ -38,14 +37,14 @@ export default function HomePage() {
       const staffWithDetailsEnsured = parsedStaff.map(staff => ({
         id: staff.id || crypto.randomUUID(),
         name: staff.name || "Unknown",
-        subject: staff.subject || "", 
+        subject: staff.subject || "",
         assignedClass: Array.isArray(staff.assignedClass) ? staff.assignedClass : (staff.assignedClass ? [staff.assignedClass] : [])
       }));
       setStaffMembers(staffWithDetailsEnsured as StaffMember[]);
     }
-    const storedTimetable = localStorage.getItem("timetableGeniusTimetable");
-    if (storedTimetable) {
-      setTimetable(JSON.parse(storedTimetable));
+    const storedTimetables = localStorage.getItem("timetableGeniusTimetables"); // Note the 's'
+    if (storedTimetables) {
+      setTimetables(JSON.parse(storedTimetables));
     }
   }, []);
 
@@ -54,10 +53,10 @@ export default function HomePage() {
   }, [staffMembers]);
 
   useEffect(() => {
-    if (timetable) {
-      localStorage.setItem("timetableGeniusTimetable", JSON.stringify(timetable));
+    if (timetables) {
+      localStorage.setItem("timetableGeniusTimetables", JSON.stringify(timetables)); // Note the 's'
     }
-  }, [timetable]);
+  }, [timetables]);
 
 
   const handleStaffSubmit = (data: { name: string; subject: string; assignedClass: string[] }) => {
@@ -70,11 +69,11 @@ export default function HomePage() {
       toast({ title: "Staff Updated", description: `${data.name} (${data.subject}, ${data.assignedClass.join(', ')}) has been updated.` });
       setEditingStaff(null);
     } else {
-      const newStaff: StaffMember = { 
-        id: crypto.randomUUID(), 
-        name: data.name, 
+      const newStaff: StaffMember = {
+        id: crypto.randomUUID(),
+        name: data.name,
         subject: data.subject,
-        assignedClass: data.assignedClass.sort() 
+        assignedClass: data.assignedClass.sort()
       };
       setStaffMembers([...staffMembers, newStaff]);
       toast({ title: "Staff Added", description: `${data.name} (${data.subject}, ${data.assignedClass.join(', ')}) has been added.` });
@@ -89,7 +88,7 @@ export default function HomePage() {
     const deletedStaffMember = staffMembers.find(s => s.id === staffId);
     setStaffMembers(staffMembers.filter((s) => s.id !== staffId));
     toast({ title: "Staff Deleted", description: `Staff member has been deleted.` });
-    
+
     if (editingStaff?.id === staffId) {
       setEditingStaff(null);
     }
@@ -97,18 +96,26 @@ export default function HomePage() {
       setSelectedStaffIdForFilter(null);
     }
 
-    // If the deleted staff was the last one for the currently selected class view, reset view to "all"
     if (deletedStaffMember && selectedClassView !== "all") {
-        const isSelectedClassStillPresent = staffMembers
-            .filter(s => s.id !== staffId) // consider staff list after deletion
-            .some(s => s.assignedClass.includes(selectedClassView));
-        if (!isSelectedClassStillPresent) {
-            setSelectedClassView("all");
-        }
+      const isSelectedClassStillPresent = staffMembers
+        .filter(s => s.id !== staffId)
+        .some(s => s.assignedClass.includes(selectedClassView));
+      if (!isSelectedClassStillPresent) {
+        setSelectedClassView("all"); // Reset view if the class no longer has staff
+      }
     }
   };
 
   const handleGenerateTimetable = async () => {
+    if (selectedClassView === "all") {
+      toast({
+        title: "Select a Class",
+        description: "Please select a specific class to generate its timetable.",
+        variant: "default",
+      });
+      return;
+    }
+
     if (staffMembers.length === 0) {
       toast({
         title: "Cannot Generate Timetable",
@@ -117,30 +124,45 @@ export default function HomePage() {
       });
       return;
     }
+    
+    const staffForSelectedClass = staffMembers.filter(s => s.assignedClass.includes(selectedClassView));
+    if (staffForSelectedClass.length === 0) {
+        toast({
+            title: "No Staff for Class",
+            description: `No staff members are assigned to ${selectedClassView}. Assign staff to this class first.`,
+            variant: "destructive",
+        });
+        return;
+    }
+
 
     setIsLoading(true);
     try {
       const staffDetailsForAI = staffMembers.map((staff, index) => ({
         id: index.toString(), // AI will use this index as staffId
         assignedClasses: staff.assignedClass,
-        // name: staff.name, // Optionally pass name for AI's internal understanding, but not strictly needed for schema
-        // subject: staff.subject, // Optionally pass subject
       }));
 
       const input: SuggestTimetableInput = {
         staffDetails: staffDetailsForAI,
+        className: selectedClassView,
         periodsPerDay: AI_PERIODS_PER_DAY,
         daysPerWeek: AI_DAYS_PER_WEEK,
         breakCount: AI_BREAK_COUNT,
       };
       const result: SuggestTimetableOutput = await suggestTimetable(input);
-      setTimetable(result.timetable);
+
+      setTimetables(prevTimetables => ({
+        ...(prevTimetables || {}),
+        [selectedClassView]: result.timetable
+      }));
+
       toast({
         title: "Timetable Generated",
-        description: "A new timetable has been suggested by AI.",
+        description: `A new timetable for ${selectedClassView} has been suggested by AI.`,
       });
     } catch (error) {
-      console.error("Error generating timetable:", error);
+      console.error(`Error generating timetable for ${selectedClassView}:`, error);
       let description = "Could not generate timetable. Check console for errors.";
       if (error instanceof Error && (error.message.includes('503') || error.message.toLowerCase().includes('service unavailable') || error.message.toLowerCase().includes('model is overloaded'))) {
         description = "The AI model is currently overloaded or unavailable. Please try again in a few moments.";
@@ -154,44 +176,51 @@ export default function HomePage() {
       setIsLoading(false);
     }
   };
-  
-  const handleEditSlotRequest = (slotInfo: TimetableSlotInfo) => {
-    setEditingSlotInfo(slotInfo);
+
+  const handleEditSlotRequest = (slotInfo: Omit<TimetableSlotInfo, 'className'>) => {
+    if (selectedClassView === "all") {
+        toast({ title: "Error", description: "Cannot edit slot when 'All Classes' view is selected.", variant: "destructive"});
+        return;
+    }
+    setEditingSlotInfo({...slotInfo, className: selectedClassView });
     setIsEditDialogOpen(true);
   };
 
   const handleSaveSlot = (dayIndex: number, aiPeriodIndex: number, activitySlotIndex: number, newStaffId: string | null) => {
-    if (!timetable) return;
+    if (!editingSlotInfo || !timetables || !timetables[editingSlotInfo.className]) return;
 
-    const newTimetable = timetable.map(daySchedule => 
+    const className = editingSlotInfo.className;
+    const currentClassTimetable = timetables[className];
+
+    const newClassTimetable = currentClassTimetable.map(daySchedule =>
       daySchedule.map(periodActivities => [...periodActivities])
     );
-    
-    if (!newTimetable[dayIndex]) newTimetable[dayIndex] = [];
-    if (!newTimetable[dayIndex][aiPeriodIndex]) newTimetable[dayIndex][aiPeriodIndex] = [];
 
-    // newStaffId from EditSlotDialog is already the staff member's actual UUID (or null)
-    // We need to find the AI index for this staff member
+    if (!newClassTimetable[dayIndex]) newClassTimetable[dayIndex] = [];
+    if (!newClassTimetable[dayIndex][aiPeriodIndex]) newClassTimetable[dayIndex][aiPeriodIndex] = [];
+
     let staffIdForTimetable: string | null = null;
     if (newStaffId) {
       const staffIndex = staffMembers.findIndex(s => s.id === newStaffId);
       if (staffIndex !== -1) {
         staffIdForTimetable = staffIndex.toString();
       } else {
-        // This case should ideally not happen if staffList in EditSlotDialog is correct
         console.warn("Could not find AI index for selected staff UUID:", newStaffId);
         toast({ title: "Error Updating Slot", description: "Could not map selected staff to AI index.", variant: "destructive" });
         return;
       }
     }
-    
-    newTimetable[dayIndex][aiPeriodIndex][activitySlotIndex] = staffIdForTimetable ? { staffId: staffIdForTimetable } : null;
-    
-    setTimetable(newTimetable);
-    toast({ title: "Slot Updated", description: "Timetable slot has been manually updated." });
+
+    newClassTimetable[dayIndex][aiPeriodIndex][activitySlotIndex] = staffIdForTimetable ? { staffId: staffIdForTimetable } : null;
+
+    setTimetables(prevTimetables => ({
+      ...(prevTimetables || {}),
+      [className]: newClassTimetable
+    }));
+    toast({ title: "Slot Updated", description: `Timetable slot for ${className} has been manually updated.` });
   };
 
- const availableClasses = useMemo(() => {
+  const availableClasses = useMemo(() => {
     const uniqueClasses = Array.from(
       new Set(staffMembers.flatMap(s => s.assignedClass || []).filter(Boolean))
     );
@@ -207,40 +236,34 @@ export default function HomePage() {
         if (!aLKG && bLKG) return 1;
         if (aUKG && !bUKG && !bLKG) return -1;
         if (!aUKG && bUKG && !aLKG) return 1;
-        
-        if (aLKG && bUKG) return -1; 
-        if (aUKG && bLKG) return 1;  
+
+        if (aLKG && bUKG) return -1;
+        if (aUKG && bLKG) return 1;
 
         const aNum = parseInt(aStr.replace("Class ", ""), 10);
         const bNum = parseInt(bStr.replace("Class ", ""), 10);
 
-        if (!isNaN(aNum) && isNaN(bNum)) return 1; 
+        if (!isNaN(aNum) && isNaN(bNum)) return 1;
         if (isNaN(aNum) && !isNaN(bNum)) return -1;
 
         if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
-        return aStr.localeCompare(bStr); 
+        return aStr.localeCompare(bStr);
     });
     return ["all", ...uniqueClasses];
   }, [staffMembers]);
 
-  const timetableForDisplay = useMemo(() => {
-    if (!timetable) return null;
-    if (selectedClassView === "all") return timetable;
+  const timetableForDisplay: TimetableData | null = useMemo(() => {
+    if (!timetables || selectedClassView === "all" || !timetables[selectedClassView]) {
+      return null;
+    }
+    return timetables[selectedClassView];
+  }, [timetables, selectedClassView]);
 
-    return timetable.map(daySchedule =>
-      daySchedule.map(periodActivities =>
-        periodActivities.map(activity => {
-          if (!activity || !activity.staffId) return null;
-          // activity.staffId is the AI index ("0", "1", etc.)
-          const staffMember = getStaffMemberByIdOrIndex(activity.staffId, staffMembers);
-          if (staffMember && staffMember.assignedClass.includes(selectedClassView)) {
-            return activity; // Keep the original activity object with AI staffId
-          }
-          return null;
-        })
-      )
-    );
-  }, [timetable, selectedClassView, staffMembers]);
+  const generateButtonText = useMemo(() => {
+    if (selectedClassView === "all") return "Generate Timetable"; // Will be disabled
+    const currentTimetableExists = timetables && timetables[selectedClassView];
+    return currentTimetableExists ? `Regenerate for ${selectedClassView}` : `Generate for ${selectedClassView}`;
+  }, [selectedClassView, timetables]);
 
 
   return (
@@ -274,36 +297,40 @@ export default function HomePage() {
         <section id="timetable-controls" className="space-y-4">
             <Card className="shadow-lg">
                 <CardContent className="p-4 flex flex-col sm:flex-row gap-4 items-start justify-between flex-wrap">
-                    <Button onClick={handleGenerateTimetable} disabled={isLoading} size="lg" className="w-full sm:w-auto">
+                    <Button 
+                        onClick={handleGenerateTimetable} 
+                        disabled={isLoading || selectedClassView === "all"} 
+                        size="lg" 
+                        className="w-full sm:w-auto"
+                        title={selectedClassView === "all" ? "Please select a specific class to generate its timetable" : ""}
+                    >
                         {isLoading ? (
                         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                         ) : (
                         <Bot className="mr-2 h-5 w-5" />
                         )}
-                        {timetable ? "Regenerate Timetable" : "Generate Timetable"}
+                        {isLoading ? "Generating..." : generateButtonText}
                     </Button>
                     <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto items-stretch">
-                        {timetable && (
-                             <div className="flex items-center gap-2 w-full sm:w-auto">
-                                <Columns className="h-5 w-5 text-muted-foreground"/>
-                                <Select
-                                    value={selectedClassView}
-                                    onValueChange={setSelectedClassView}
-                                >
-                                    <SelectTrigger className="w-full sm:w-[200px]">
-                                    <SelectValue placeholder="View timetable for..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                    {availableClasses.map((classLevel) => (
-                                        <SelectItem key={classLevel} value={classLevel}>
-                                        {classLevel === "all" ? "All Classes" : classLevel}
-                                        </SelectItem>
-                                    ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        )}
-                        {staffMembers.length > 0 && timetable && (
+                         <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <Columns className="h-5 w-5 text-muted-foreground"/>
+                            <Select
+                                value={selectedClassView}
+                                onValueChange={setSelectedClassView}
+                            >
+                                <SelectTrigger className="w-full sm:w-[200px]">
+                                <SelectValue placeholder="View timetable for..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                {availableClasses.map((classLevel) => (
+                                    <SelectItem key={classLevel} value={classLevel}>
+                                    {classLevel === "all" ? "All Classes (Select a class)" : classLevel}
+                                    </SelectItem>
+                                ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {staffMembers.length > 0 && timetableForDisplay && ( // Only show staff filter if a timetable is visible
                             <div className="flex items-center gap-2 w-full sm:w-auto">
                                 <Filter className="h-5 w-5 text-muted-foreground"/>
                                 <Select
@@ -319,7 +346,9 @@ export default function HomePage() {
                                         <Users className="h-4 w-4 text-muted-foreground" /> Show All Staff
                                         </div>
                                     </SelectItem>
-                                    {staffMembers.map((staff) => (
+                                    {staffMembers
+                                        .filter(staff => selectedClassView === "all" || staff.assignedClass.includes(selectedClassView)) // Filter staff based on selected class view
+                                        .map((staff) => (
                                         <SelectItem key={staff.id} value={staff.id}>
                                         {staff.name}
                                         </SelectItem>
@@ -333,14 +362,13 @@ export default function HomePage() {
             </Card>
         </section>
 
-
         <section id="timetable-display">
-          <TimetableGrid 
-            timetable={timetableForDisplay} 
-            staffList={staffMembers} 
+          <TimetableGrid
+            timetable={timetableForDisplay}
+            staffList={staffMembers}
             onEditSlotRequest={handleEditSlotRequest}
             selectedStaffIdForFilter={selectedStaffIdForFilter}
-            selectedClassView={selectedClassView}
+            selectedClassView={selectedClassView} // Pass selectedClassView for context
           />
         </section>
       </main>
@@ -348,16 +376,14 @@ export default function HomePage() {
       <EditSlotDialog
         isOpen={isEditDialogOpen}
         onClose={() => setIsEditDialogOpen(false)}
-        slotInfo={editingSlotInfo}
+        slotInfo={editingSlotInfo} // editingSlotInfo now includes className
         staffList={staffMembers}
         onSave={handleSaveSlot}
       />
-      
+
       <footer className="w-full max-w-6xl mt-16 pt-8 border-t text-center text-muted-foreground">
         <p>&copy; {new Date().getFullYear()} TimeTableGenius. Built with intelligence.</p>
       </footer>
     </div>
   );
 }
-
-    
